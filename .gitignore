@@ -9,6 +9,9 @@ __pycache__/
 # generated GeNN code
 *_CODE/
 
+# ignore experimental folder
+experimental/
+
 # Distribution / packaging
 .Python
 build/
