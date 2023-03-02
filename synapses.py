@@ -24,7 +24,7 @@ slow_syn = {
     "wu_pre_var_space": {},
     "wu_post_var_space": {},
     "postsyn_model": "ExpCurr",
-    "ps_param_space": {"tau": 0.1},
+    #"ps_param_space": {"tau": 1.0},
     "ps_var_space": {}
 }
 

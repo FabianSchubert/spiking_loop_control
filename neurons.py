@@ -10,10 +10,11 @@ class External:
     model = create_custom_neuron_class(
         "external_neuron",
         sim_code="""
-            $(u) = $(Isyn);
+            $(u_eff) += $(Isyn_fast) - DT * $(l) * $(u_eff);
         """,
-        param_names=[],
-        var_name_types=[("x", "scalar"), ("u", "scalar")]
+        additional_input_vars=[("Isyn_fast", "scalar", 0.0)],
+        param_names=["l"],
+        var_name_types=[("x", "scalar"), ("u_eff", "scalar")]
     )
 
 class Noise:
@@ -35,52 +36,57 @@ class Lif:
 
     params = {
         "l": 1.0,
-        "vt": 1.0,
         "vr": 0.0
     }
 
     var_init = {
         "v": 0.0,
-        "spike": 0
+        "vt": 1.0,
+        "i_slow": 0.0,
+        "spike": 0,
+        "r": 0.0,
     }
 
     model = create_custom_neuron_class(
             "lif_slow_fast",
             sim_code="""
-                $(v) += (DT * ($(Isyn_fast) + $(Isyn_slow)
-                             + $(Isyn_ds) + $(Isyn_z)
+
+                $(v) += (DT * ($(i_slow)
+                             + $(Isyn_ds)
                              - $(l)*$(v))
+                             + $(Isyn_fast)
                              + $(DTSQRT) * $(Isyn_noise)
                         );
 
-                $(spike) = 0;
-                if($(v) > $(vt)){
-                    $(spike) = 1;
-                    $(v) = $(vr);
-                }
+                $(i_slow) += $(Isyn_slow) - DT * $(l) * $(i_slow);
+                
+                // keep track of r for debugging purposes...
+                $(r) -= DT * $(l) * $(r);
 
                 // reset spikeCount
                 if($(id) == 0){
                     *($(spikeCount)) = 0;
                 }
+
+
             """,
             threshold_condition_code="""
                 //my threshold code
-                ($(spike)
+                (($(v) > $(vt))
                 && (*($(spikeCount)) == 0)
                 && (atomicCAS($(spikeCount), 0, 1) == 0))
             """,
-            reset_code="""
-                //$(v) = $(vr);
-            """,
-            param_names=["l", "vt", "vr"],
+            reset_code="$(r) += 1.0;",
+            param_names=["l", "vr"],
             var_name_types=[("v", "scalar"),
-                            ("spike", "int")],
+                            ("vt", "scalar"),
+                            ("i_slow", "scalar"),
+                            ("spike", "int"),
+                            ("r", "scalar")],
             additional_input_vars=[("Isyn_fast", "scalar", 0.0),
                                    ("Isyn_slow", "scalar", 0,0),
                                    ("Isyn_noise", "scalar", 0.0),
-                                   ("Isyn_ds", "scalar", 0.0),
-                                   ("Isyn_z", "scalar", 0.0)],
+                                   ("Isyn_ds", "scalar", 0.0)],
             derived_params=[("DTSQRT", 
                 create_dpf_class(lambda pars, dt: np.sqrt(dt))())],
             extra_global_params=[("spikeCount", "int*")],

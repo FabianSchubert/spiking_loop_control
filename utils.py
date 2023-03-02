@@ -2,7 +2,11 @@
 
 from pygenn.genn_model import (create_custom_init_var_snippet_class,
                                create_custom_neuron_class,
-                               create_dpf_class)
+                               create_dpf_class,
+                               create_var_ref,
+                               create_custom_custom_update_class)
+
+#from pygenn.genn_wrapper import VarAccessMode_REDUCE_NEURON_MAX
 
 from dataclasses import dataclass, field
 import typing
@@ -18,6 +22,19 @@ norm_w_no_autapse_model = create_custom_init_var_snippet_class(
             $(value) = ($(id_pre) == $(id_post)) ? 0.0 : ($(mean) + $(gennrand_normal) * $(sd));
         """
     )
+
+'''
+single_spike_update = create_custom_custom_update_class(
+    "single_spike_update",
+    var_refs=[("vmax", "scalar", VarAccessMode_REDUCE_NEURON_MAX),
+              ("vmax_set", "scalar"),
+              ("spikeNum", "scalar")],
+    var_name_types=[],
+    update_code="""
+        $(vmax_set) = $(vmax);
+    """
+    )
+'''
 
 @dataclass
 class EulerMaruyama:
