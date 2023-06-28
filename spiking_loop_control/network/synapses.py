@@ -12,7 +12,7 @@ ps_delta_curr_norm = create_custom_postsynaptic_class(
     var_name_types=[],
     decay_code=None,
     apply_input_code="""
-        $(Isyn) += $(inSyn) / DT;
+        $(Isyn) += $(inSyn);
         $(inSyn) = 0.;
     """
     )
@@ -20,7 +20,7 @@ ps_delta_curr_norm = create_custom_postsynaptic_class(
 ps_r_curr = create_custom_postsynaptic_class(
     "ps_r_curr",
     param_names=["l"],
-    derived_params=[("decFact", 
+    derived_params=[("decFact",
                 create_dpf_class(lambda pars, dt: np.exp(-dt*pars[0]))())],
     var_name_types=[("inSynCustom", "scalar")],
     apply_input_code="""
@@ -96,11 +96,4 @@ noise_syn = {
     "ps_param_space": {},
     "ps_var_space": {}
 }
-
-
-
-
-
-
-
 
