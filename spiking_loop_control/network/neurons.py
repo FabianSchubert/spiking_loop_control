@@ -55,27 +55,21 @@ class Lif:
             sim_code="""
 
                 $(v) += (DT * ($(Isyn_slow)
-                             + $(Isyn_fast)
                              + $(Isyn_ds)
                              - $(l)*$(v))
-                             
+
+                             + $(Isyn_fast)
+
                              + $(DTSQRT) * $(Isyn_noise)
                         );
-                
+
                 // keep track of r for debugging purposes...
                 $(r) -= DT * $(l) * $(r);
-
-                // reset spikeCount
-                if($(id) == 0){
-                    *($(spikeCount)) = 0;
-                }
-
 
             """,
             threshold_condition_code="""
                 //my threshold code
                 (($(v) > $(vt))
-                && (*($(spikeCount)) == 0)
                 && (atomicCAS($(spikeCount), 0, 1) == 0))
             """,
             reset_code="$(r) += 1.0;",
@@ -88,7 +82,7 @@ class Lif:
                                    ("Isyn_slow", "scalar", 0,0),
                                    ("Isyn_noise", "scalar", 0.0),
                                    ("Isyn_ds", "scalar", 0.0)],
-            derived_params=[("DTSQRT", 
+            derived_params=[("DTSQRT",
                 create_dpf_class(lambda pars, dt: np.sqrt(dt))())],
             extra_global_params=[("spikeCount", "int*")],
             is_auto_refractory_required=False

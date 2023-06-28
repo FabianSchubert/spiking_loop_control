@@ -19,6 +19,12 @@ import numpy as np
 class SpikeNet:
 
     def __init__(self, N, K, NZ, KZ):
+        '''
+            N: Dimension of the spiking sontrol network
+            K: Dimension of the dynamical system to be controlled.
+            NZ: Dimension of the spiking network encoding the target variable (z)
+            KZ: Dimension of the target / obversable.
+        '''
         self.N = N
         self.K = K
         self.NZ = NZ
@@ -27,6 +33,12 @@ class SpikeNet:
     def set_dynamics(self, A, B, C, D, Dz, l, Time, dt, x0, z0,
                     Q, R, SIGM_NOISE_N, SIGM_NOISE_D,
                     SIGM_NOISE_V, SIGM_NOISE_V_Z):
+        '''
+            A, B: Matrices defining the dynamical system dx(t)/dt = Ax(t) + Bu(t) + psi_d(t)
+            C: Readout matrix defining the observable y(t) = Cx(t) + psi_n(t)
+            D: Decoding matrix
+            D: Decoding matrix z population
+        '''
         self.A = A
         self.B = B
         self.C = C
@@ -115,7 +127,7 @@ class SpikeNet:
 
         for pop in self.record_spikes:
             self.model.neuron_populations[pop].spike_recording_enabled = True
-        
+
         self.model.build()
 
         # initialise the extra global parameter
@@ -215,7 +227,6 @@ class SpikeNet:
             )
         ########################
 
-        
 
     def add_synapse_populations(self):
         ######################## add synapse populations
@@ -365,7 +376,7 @@ class SpikeNet:
 
         self.x_view[:] = self.x
 
-        self.ds_pop.push_var_to_device("x") 
+        self.ds_pop.push_var_to_device("x")
         ####################
 
         #################### update z var
@@ -375,6 +386,14 @@ class SpikeNet:
 
         # update model on device
         self.model.step_time()
+
+        # update spikeCounter extra global parameters
+        self.lif_pop.extra_global_params["spikeCount"].view[:] = 0
+        self.lif_pop.push_extra_global_param_to_device("spikeCount", 1)
+
+        self.lif_pop_z.extra_global_params["spikeCount"].view[:] = 0
+        self.lif_pop_z.push_extra_global_param_to_device("spikeCount", 1)
+
 
         for k, (pop, var) in enumerate(self.record_variables):
             self.model.neuron_populations[pop].pull_var_from_device(var)

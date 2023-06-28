@@ -99,7 +99,7 @@ A, B, C, D, Dz, l, Time, dt, x0, z0,
                     Q, R, SIGM_NOISE_N, SIGM_NOISE_D,
                     SIGM_NOISE_V, SIGM_NOISE_V_Z
 '''
-net.set_dynamics(A, B, C, D, Dz, l, T_SIM, DT, x0, z[0],
+net.set_dynamics(A, B, C, D, Dz, l, T_SIM, DT, x0, z_eff[0],
                  Q, R, SIGM_NOISE_N, SIGM_NOISE_D,
                  SIGM_NOISE_V, SIGM_NOISE_V_Z)
 
@@ -109,7 +109,9 @@ record_vars = [("lif_pop", "v"),
                ("lif_pop_z", "r"),
                ("ds_pop", "x")]
 
-net.build_network_model(record_vars, ["lif_pop", "lif_pop_z"])
+record_spikes = ["lif_pop", "lif_pop_z"]
+
+net.build_network_model(record_vars, record_spikes)
 
 ######################## profiler
 pr = cProfile.Profile()
@@ -118,7 +120,7 @@ pr.enable()
 
 ######################## Run Simulation
 for tid in tqdm(range(NT)):
-    net.step(tid, z[tid])
+    net.step(tid, z_eff[tid])
 ########################
 
 ######################## print profiling stats
