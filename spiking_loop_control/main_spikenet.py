@@ -2,6 +2,8 @@
 
 from network.spikenet import SpikeNet
 
+from network.utils import EulerMaruyama, lin_system
+
 import numpy as np
 
 from tqdm import tqdm
@@ -13,6 +15,14 @@ import pdb
 
 import cProfile, pstats, io
 from pstats import SortKey
+
+import argparse
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument("--sensor_mode", action="store_const", const=True, default=False)
+
+sensor_mode = parser.parse_args().sensor_mode
 
 ######################## Simulation Parameters
 T_SIM = 20.0
@@ -31,7 +41,7 @@ K = 2 # size of the dynamical system (?)
 NZ = 50 # size of lif z population
 KZ = 2 # dimensions of the external control input z
 P = 1 # dimensions of control variable u
-NY = 2 # dimensions of the (implicit) observation vector y
+NY = 2 # dimensions of the observation vector y
 ######
 
 ######################## Additional Parameter Definitions
@@ -92,7 +102,17 @@ z_dot = np.zeros([NT,K])
 z_eff = z_dot + l * z
 ########################
 
-net = SpikeNet(N, K, NZ, KZ)
+# required for running the dynamical system externally for testing purposes
+if sensor_mode:
+    u_eff = np.zeros((K))
+    integrator = EulerMaruyama(lambda tf, xf: lin_system(xf, u_eff=u_eff, A=A), SIGM_NOISE_D, DT, K)
+
+    u_svd,s_svd,_ = np.linalg.svd(SIGM_NOISE_N)
+    P_NOISE_Y = u_svd @ np.diag(np.sqrt(s_svd))
+
+    x_sim = np.array(x0)
+
+net = SpikeNet(N, K, NZ, KZ, sensor_mode=sensor_mode)
 
 '''
 A, B, C, D, Dz, l, Time, dt, x0, z0,
@@ -106,12 +126,15 @@ net.set_dynamics(A, B, C, D, Dz, l, T_SIM, DT, x0, z_eff[0],
 record_vars = [("lif_pop", "v"),
                ("lif_pop_z", "v"),
                ("lif_pop", "r"),
-               ("lif_pop_z", "r"),
-               ("ds_pop", "x")]
+               ("lif_pop_z", "r")]#,
+               #("ds_pop", "x")]
 
 record_spikes = ["lif_pop", "lif_pop_z"]
 
 net.build_network_model(record_vars, record_spikes)
+
+######### manually record x
+x_rec = np.ndarray((NT, K))
 
 ######################## profiler
 pr = cProfile.Profile()
@@ -120,7 +143,17 @@ pr.enable()
 
 ######################## Run Simulation
 for tid in tqdm(range(NT)):
-    net.step(tid, z_eff[tid])
+    if sensor_mode:
+        u_eff = B @ net.u
+        x_sim = integrator.step(tid * DT, x_sim)
+        y = C @ x_sim + P_NOISE_Y @ np.random.normal(0., 1., (KZ))
+
+    net.step(tid, z_eff[tid], y)
+
+    if sensor_mode:
+        x_rec[tid] = x_sim
+    else:
+        x_rec[tid] = net.x
 ########################
 
 ######################## print profiling stats
@@ -134,7 +167,8 @@ print(s.getvalue())
 
 lif_spikes, lif_z_spikes = net.get_spike_recordings()
 
-v_rec, vz_rec, r_rec, rz_rec, x_rec = net.var_rec_arrays
+# v_rec, vz_rec, r_rec, rz_rec, x_rec = net.var_rec_arrays
+v_rec, vz_rec, r_rec, rz_rec = net.var_rec_arrays
 
 fig_sp, ax_sp = plt.subplots(1,1)
 ax_sp.plot(lif_spikes[0], lif_spikes[1], '.', c='k', markersize=1)

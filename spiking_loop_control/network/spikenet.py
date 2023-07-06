@@ -18,7 +18,7 @@ import numpy as np
 
 class SpikeNet:
 
-    def __init__(self, N, K, NZ, KZ):
+    def __init__(self, N, K, NZ, KZ, sensor_mode=False):
         '''
             N: Dimension of the spiking sontrol network
             K: Dimension of the dynamical system to be controlled.
@@ -29,6 +29,7 @@ class SpikeNet:
         self.K = K
         self.NZ = NZ
         self.KZ = KZ
+        self.sensor_mode = sensor_mode
 
     def set_dynamics(self, A, B, C, D, Dz, l, Time, dt, x0, z0,
                     Q, R, SIGM_NOISE_N, SIGM_NOISE_D,
@@ -44,6 +45,8 @@ class SpikeNet:
         self.C = C
         self.D = D
         self.Dz = Dz
+
+        self.NU = self.B.shape[1] # dimension of the control variable u.
 
         self.T = np.diag(self.D.T@self.D)/2. # neuron thresholds
         self.Tz = np.diag(self.Dz.T@self.Dz)/2.
@@ -83,7 +86,8 @@ class SpikeNet:
 
         self.O_r = self.O_A + self.O_yr + self.O_control
 
-        self.SIGM_NOISE_LIF = self.SIGM_NOISE_V + self.O_y @ self.SIGM_NOISE_N @ self.O_y.T
+        self.SIGM_NOISE_LIF = self.SIGM_NOISE_V
+        # self.SIGM_NOISE_LIF = self.SIGM_NOISE_V + self.O_y @ self.SIGM_NOISE_N @ self.O_y.T
 
         # Calculate the projection matrix P_NOISE
         # that generates this covariance
@@ -95,17 +99,23 @@ class SpikeNet:
         u_svd,s_svd,_ = np.linalg.svd(self.SIGM_NOISE_V_Z)
         self.P_NOISE_Z = u_svd @ np.diag(np.sqrt(s_svd))
 
+        if not self.sensor_mode:
+            u_svd,s_svd,_ = np.linalg.svd(self.SIGM_NOISE_N)
+            self.P_NOISE_Y = u_svd @ np.diag(np.sqrt(s_svd))
+
         self.x = np.array(self.x0)
+        self.y = np.zeros(self.KZ)
+        self.u = np.zeros(self.NU)
         self.u_eff = np.zeros((self.K))
 
+        if not self.sensor_mode:
+            self.f = lambda tf, xf: lin_system(xf, u_eff=self.u_eff, A=self.A)
+            # note: a reference to the variable u_eff is passed here, not the values.
+            # This means that changing u_eff later will also affect the result of calling
+            # f accordingly. Same with A, even though this is not changed anywhere.
 
-        self.f = lambda tf, xf: lin_system(xf, u_eff=self.u_eff, A=self.A)
-        # note: a reference to the variable u_eff is passed here, not the values.
-        # This means that changing u_eff later will also affect the result of calling
-        # f accordingly. Same with A, even though this is not changed anywhere.
-
-        self.ds_integrator = EulerMaruyama(self.f, self.SIGM_NOISE_D, self.DT, self.K,
-                                        buffer_rand_samples=self.NT)
+            self.ds_integrator = EulerMaruyama(self.f, self.SIGM_NOISE_D, self.DT, self.K,
+                                               buffer_rand_samples=self.NT)
 
         ######################## "slow synapse rates" initial values
         self.r0 = np.linalg.pinv(self.D)@self.x0
@@ -147,10 +157,11 @@ class SpikeNet:
             self.var_views.append(self.model.neuron_populations[pop].vars[var].view)
             self.var_rec_arrays.append(np.ndarray((self.NT, self.model.neuron_populations[pop].size)))
 
-        self.u_eff_view = self.ds_pop.vars["u_eff"].view
-        self.x_view = self.ds_pop.vars["x"].view
+        # self.u_eff_view = self.ds_pop.vars["u_eff"].view
+        self.u_view = self.u_pop.vars["u_eff"].view
+        # self.x_view = self.ds_pop.vars["x"].view
+        self.y_view = self.y_pop.vars["x"].view
         self.z_eff_view = self.z_eff_pop.vars["x"].view
-
 
     def add_neuron_populations(self):
         ######################## add lif population
@@ -195,6 +206,23 @@ class SpikeNet:
             )
         ########################
 
+        ######################## add y state population
+        self.y_pop = self.model.add_neuron_population(
+            "y_pop",
+            self.KZ, External.model,
+            {"l": 0.0}, {"x": 0.0, "u_eff": 0.0}
+        )
+        ########################
+
+        ######################## add u state population
+        self.u_pop = self.model.add_neuron_population(
+            "u_pop",
+            self.NU, External.model,
+            {"l": 0.0}, {"x": 0.0, "u_eff": 0.0}
+        )
+        ########################
+
+        '''
         ######################## add dynamical system population
         self.ds_pop = self.model.add_neuron_population(
                 "ds_pop",
@@ -204,6 +232,7 @@ class SpikeNet:
                 "u_eff": self.B@self.K_r@(self.Dz@self.rz0-self.D@self.r0)}
             )
         ########################
+        '''
 
         ######################## add z population
         self.z_eff_pop = self.model.add_neuron_population(
@@ -279,6 +308,7 @@ class SpikeNet:
             )
         self.W_v_vz_r.ps_target_var = "Isyn_slow"
 
+        '''
         # (effective) synapses for input to lif from the dynamical system
         self.W_v_x = self.model.add_synapse_population(
             pop_name="syn_ds_to_lif",
@@ -290,6 +320,19 @@ class SpikeNet:
 
         # set postsynaptic target for ds input synapses
         self.W_v_x.ps_target_var = "Isyn_ds"
+        '''
+
+        # synapses for input to lif from the observations y
+        self.W_v_y = self.model.add_synapse_population(
+            pop_name="syn_y_to_lif",
+            source="y_pop",
+            target="lif_pop",
+            wu_var_space={"g": self.O_y.T.flatten()},
+            **synapses.continuous_external_syn
+        )
+
+        # set postsynaptic target for y input synapses
+        self.W_v_y.ps_target_var = "Isyn_ds"
 
         # synapses for noise input to lif - the weights
         # determine the noise covariance.
@@ -323,6 +366,7 @@ class SpikeNet:
             wu_var_space={"g": (-self.Dz.T@self.Dz).T.flatten()},
             **synapses.fast_syn
             )
+
         self.W_vz_vz_s.ps_target_var = "Isyn_fast"
 
         # synapses for noise input to lif z - the weights
@@ -339,44 +383,47 @@ class SpikeNet:
         self.W_vz_noise.ps_target_var = "Isyn_noise"
         ##########
 
-        ########## to the dynamical system
+        ########## to the control variable u
         # slow synapses from lif for control input u of the dynamical system
         self.W_u_v_r = self.model.add_synapse_population(
-                pop_name="syn_lif_to_ds",
+                pop_name="syn_lif_to_u",
                 source="lif_pop",
-                target="ds_pop",
-                wu_var_space={"g": (-self.B@self.K_r@self.D).T.flatten()},
+                target="u_pop",
+                wu_var_space={"g": (-self.K_r@self.D).T.flatten()},
                 **synapses.slow_syn,
                 ps_param_space={"l": self.l},
-                ps_var_space={"inSynCustom": -self.B@self.K_r@self.D@self.r0}
+                ps_var_space={"inSynCustom": -self.K_r@self.D@self.r0}
             )
         self.W_u_v_r.ps_target_var = "Isyn"
 
         # slow synapses from lif z for control input u of the dynamical system
         self.W_u_vz_r = self.model.add_synapse_population(
-                pop_name="syn_lif_z_to_ds",
+                pop_name="syn_lif_z_to_u",
                 source="lif_pop_z",
-                target="ds_pop",
-                wu_var_space={"g": (self.B@self.K_r@self.Dz).T.flatten()},
+                target="u_pop",
+                wu_var_space={"g": (self.K_r@self.Dz).T.flatten()},
                 **synapses.slow_syn,
                 ps_param_space={"l": self.l},
-                ps_var_space={"inSynCustom": self.B@self.K_r@self.Dz@self.rz0}
+                ps_var_space={"inSynCustom": self.K_r@self.Dz@self.rz0}
             )
 
         self.W_u_vz_r.ps_target_var = "Isyn"
         ##########
 
-    def step(self, tid, z):
+    def step(self, tid, z, y=None):
 
         #################### update ds_vars
-        self.ds_pop.pull_var_from_device("u_eff")
-        self.u_eff[:] = self.u_eff_view
+        self.u_pop.pull_var_from_device("u_eff")
+        self.u[:] = self.u_view
 
-        self.x[:] = self.ds_integrator.step(tid * self.DT, self.x)
+        if not self.sensor_mode:
+            self.u_eff = self.B @ self.u
+            self.x[:] = self.ds_integrator.step(tid * self.DT, self.x)
+            self.y_view[:] = self.C @ self.x + self.P_NOISE_Y @ np.random.normal(0., 1., (self.KZ))
+        else:
+            self.y_view[:] = y
 
-        self.x_view[:] = self.x
-
-        self.ds_pop.push_var_to_device("x")
+        self.y_pop.push_var_to_device("x")
         ####################
 
         #################### update z var
