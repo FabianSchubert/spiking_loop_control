@@ -21,8 +21,12 @@ import argparse
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--sensor_mode", action="store_const", const=True, default=False)
+parser.add_argument("--shared_memory", action="store_const", const=True, default=False)
 
-sensor_mode = parser.parse_args().sensor_mode
+args = parser.parse_args()
+
+SENSOR_MODE = args.sensor_mode
+SHARED_MEMORY = args.shared_memory
 
 ######################## Simulation Parameters
 T_SIM = 20.0
@@ -103,7 +107,7 @@ z_eff = z_dot + l * z
 ########################
 
 # required for running the dynamical system externally for testing purposes
-if sensor_mode:
+if SENSOR_MODE:
     u_eff = np.zeros((K))
     integrator = EulerMaruyama(lambda tf, xf: lin_system(xf, u_eff=u_eff, A=A), SIGM_NOISE_D, DT, K)
 
@@ -112,7 +116,7 @@ if sensor_mode:
 
     x_sim = np.array(x0)
 
-net = SpikeNet(N, K, NZ, KZ, sensor_mode=sensor_mode)
+net = SpikeNet(N, K, NZ, KZ, sensor_mode=SENSOR_MODE, shared_memory=SHARED_MEMORY)
 
 '''
 A, B, C, D, Dz, l, Time, dt, x0, z0,
@@ -122,14 +126,15 @@ A, B, C, D, Dz, l, Time, dt, x0, z0,
 net.set_dynamics(A, B, C, D, Dz, l, T_SIM, DT, x0, z_eff[0],
                  Q, R, SIGM_NOISE_N, SIGM_NOISE_D,
                  SIGM_NOISE_V, SIGM_NOISE_V_Z)
-
+record_vars = []
+'''
 record_vars = [("lif_pop", "v"),
                ("lif_pop_z", "v"),
                ("lif_pop", "r"),
                ("lif_pop_z", "r")]#,
                #("ds_pop", "x")]
-
-record_spikes = ["lif_pop", "lif_pop_z"]
+'''
+record_spikes = [] #["lif_pop", "lif_pop_z"]
 
 net.build_network_model(record_vars, record_spikes)
 
@@ -143,16 +148,15 @@ pr.enable()
 
 ######################## Run Simulation
 for tid in tqdm(range(NT)):
-    if sensor_mode:
+    if SENSOR_MODE:
         u_eff = B @ net.u
         x_sim = integrator.step(tid * DT, x_sim)
         y = C @ x_sim + P_NOISE_Y @ np.random.normal(0., 1., (KZ))
 
-    net.step(tid, z_eff[tid], y)
-
-    if sensor_mode:
+        net.step(tid, z_eff[tid], y)
         x_rec[tid] = x_sim
     else:
+        net.step(tid, z_eff[tid])
         x_rec[tid] = net.x
 ########################
 
@@ -168,7 +172,7 @@ print(s.getvalue())
 lif_spikes, lif_z_spikes = net.get_spike_recordings()
 
 # v_rec, vz_rec, r_rec, rz_rec, x_rec = net.var_rec_arrays
-v_rec, vz_rec, r_rec, rz_rec = net.var_rec_arrays
+# v_rec, vz_rec, r_rec, rz_rec = net.var_rec_arrays
 
 fig_sp, ax_sp = plt.subplots(1,1)
 ax_sp.plot(lif_spikes[0], lif_spikes[1], '.', c='k', markersize=1)
@@ -188,17 +192,21 @@ ax_ds.set_xlabel("$t$")
 ax_ds.set_ylabel("$x$")
 fig_ds.tight_layout()
 
+'''
 fig_v, ax_v = plt.subplots(1,1)
 ax_v.plot(t_ax, v_rec[:,0])
 ax_v.set_xlabel("$t$")
 ax_v.set_ylabel("$v$")
 fig_v.tight_layout()
+'''
 
+'''
 fig_vz, ax_vz = plt.subplots(1,1)
 ax_vz.plot(t_ax, vz_rec[:,0])
 ax_vz.set_xlabel("$t$")
 ax_vz.set_ylabel("vz")
 fig_vz.tight_layout()
+'''
 
 plt.show()
 

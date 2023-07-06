@@ -8,6 +8,8 @@ from pygenn.genn_model import (GeNNModel,
                                init_var,
                                create_var_ref)
 
+from pygenn.genn_wrapper import VarLocation_HOST_DEVICE_ZERO_COPY
+
 from .neurons import Lif, External, Noise
 from . import synapses
 from .utils import EulerMaruyama, lin_system
@@ -18,7 +20,7 @@ import numpy as np
 
 class SpikeNet:
 
-    def __init__(self, N, K, NZ, KZ, sensor_mode=False):
+    def __init__(self, N, K, NZ, KZ, sensor_mode=False, shared_memory=False):
         '''
             N: Dimension of the spiking sontrol network
             K: Dimension of the dynamical system to be controlled.
@@ -30,6 +32,7 @@ class SpikeNet:
         self.NZ = NZ
         self.KZ = KZ
         self.sensor_mode = sensor_mode
+        self.shared_memory = shared_memory
 
     def set_dynamics(self, A, B, C, D, Dz, l, Time, dt, x0, z0,
                     Q, R, SIGM_NOISE_N, SIGM_NOISE_D,
@@ -134,18 +137,23 @@ class SpikeNet:
 
         self.add_neuron_populations()
         self.add_synapse_populations()
+        
+        if self.shared_memory:
+            self.u_pop.pop.set_var_location("u_eff", VarLocation_HOST_DEVICE_ZERO_COPY)
+            self.y_pop.pop.set_var_location("x", VarLocation_HOST_DEVICE_ZERO_COPY)
+            self.z_eff_pop.pop.set_var_location("x", VarLocation_HOST_DEVICE_ZERO_COPY)
 
         for pop in self.record_spikes:
             self.model.neuron_populations[pop].spike_recording_enabled = True
 
-        self.model.build()
-
+        # self.model.build()
+        
         # initialise the extra global parameter
         # "spikeCount", which is needed for the
         # one-spike-at-a-time behaviour.
         self.lif_pop.set_extra_global_param("spikeCount", np.zeros(1).astype("int"))
         self.lif_pop_z.set_extra_global_param("spikeCount", np.zeros(1).astype("int"))
-
+        
         # load the model. num_recording_timesteps
         # determines the spike recording buffer size
         self.model.load(num_recording_timesteps=self.NT)
@@ -440,7 +448,6 @@ class SpikeNet:
 
         self.lif_pop_z.extra_global_params["spikeCount"].view[:] = 0
         self.lif_pop_z.push_extra_global_param_to_device("spikeCount", 1)
-
 
         for k, (pop, var) in enumerate(self.record_variables):
             self.model.neuron_populations[pop].pull_var_from_device(var)
