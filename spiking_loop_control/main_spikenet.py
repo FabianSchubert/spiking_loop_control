@@ -134,7 +134,7 @@ record_vars = [("lif_pop", "v"),
                ("lif_pop_z", "r")]#,
                #("ds_pop", "x")]
 '''
-record_spikes = [] #["lif_pop", "lif_pop_z"]
+record_spikes = ["lif_pop", "lif_pop_z"]
 
 net.build_network_model(record_vars, record_spikes)
 

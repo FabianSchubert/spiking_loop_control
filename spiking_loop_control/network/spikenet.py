@@ -6,7 +6,9 @@ from pygenn.genn_model import (GeNNModel,
                                create_dpf_class,
                                create_custom_init_var_snippet_class,
                                init_var,
-                               create_var_ref)
+                               create_var_ref,
+                               create_custom_custom_update_class,
+                               create_egp_ref)
 
 from pygenn.genn_wrapper import VarLocation_HOST_DEVICE_ZERO_COPY
 
@@ -17,6 +19,15 @@ from .utils import EulerMaruyama, lin_system
 from scipy.linalg import solve_continuous_are as riccati
 
 import numpy as np
+
+spikeCount_custom_update_model = create_custom_custom_update_class(
+    "spikeCount_update_model",
+    var_refs=[("x", "scalar")], param_names=[],
+    extra_global_param_refs=[("spikeCount", "int*")],
+    update_code="""
+        *($(spikeCount)) = 0;
+    """
+)
 
 class SpikeNet:
 
@@ -113,7 +124,7 @@ class SpikeNet:
 
         if not self.sensor_mode:
             self.f = lambda tf, xf: lin_system(xf, u_eff=self.u_eff, A=self.A)
-            # note: a reference to the variable u_eff is passed here, not the values.
+           # note: a reference to the variable u_eff is passed here, not the values.
             # This means that changing u_eff later will also affect the result of calling
             # f accordingly. Same with A, even though this is not changed anywhere.
 
@@ -137,7 +148,19 @@ class SpikeNet:
 
         self.add_neuron_populations()
         self.add_synapse_populations()
-        
+
+        self.spikeCount_custom_update_lif = self.model.add_custom_update(
+            "spikeCount_custom_update_lif", "spike_count_update",
+            spikeCount_custom_update_model, {}, {}, {"x": create_var_ref(self.lif_pop, "v")},
+            {"spikeCount": create_egp_ref(self.lif_pop, "spikeCount")}
+        )
+
+        self.spikeCount_custom_update_lif_z = self.model.add_custom_update(
+            "spikeCount_custom_update_lif_z", "spike_count_update",
+            spikeCount_custom_update_model, {}, {}, {"x": create_var_ref(self.lif_pop_z, "v")},
+            {"spikeCount": create_egp_ref(self.lif_pop_z, "spikeCount")}
+        )
+
         if self.shared_memory:
             self.u_pop.pop.set_var_location("u_eff", VarLocation_HOST_DEVICE_ZERO_COPY)
             self.y_pop.pop.set_var_location("x", VarLocation_HOST_DEVICE_ZERO_COPY)
@@ -146,7 +169,7 @@ class SpikeNet:
         for pop in self.record_spikes:
             self.model.neuron_populations[pop].spike_recording_enabled = True
 
-        # self.model.build()
+        self.model.build()
         
         # initialise the extra global parameter
         # "spikeCount", which is needed for the
@@ -443,11 +466,12 @@ class SpikeNet:
         self.model.step_time()
 
         # update spikeCounter extra global parameters
-        self.lif_pop.extra_global_params["spikeCount"].view[:] = 0
-        self.lif_pop.push_extra_global_param_to_device("spikeCount", 1)
+        self.model.custom_update("spike_count_update")
+        # self.lif_pop.extra_global_params["spikeCount"].view[:] = 0
+        # self.lif_pop.push_extra_global_param_to_device("spikeCount", 1)
 
-        self.lif_pop_z.extra_global_params["spikeCount"].view[:] = 0
-        self.lif_pop_z.push_extra_global_param_to_device("spikeCount", 1)
+        # self.lif_pop_z.extra_global_params["spikeCount"].view[:] = 0
+        # self.lif_pop_z.push_extra_global_param_to_device("spikeCount", 1)
 
         for k, (pop, var) in enumerate(self.record_variables):
             self.model.neuron_populations[pop].pull_var_from_device(var)
