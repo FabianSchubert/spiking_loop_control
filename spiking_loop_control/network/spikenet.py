@@ -52,7 +52,7 @@ class SpikeNet:
             A, B: Matrices defining the dynamical system dx(t)/dt = Ax(t) + Bu(t) + psi_d(t)
             C: Readout matrix defining the observable y(t) = Cx(t) + psi_n(t)
             D: Decoding matrix
-            D: Decoding matrix z population
+            Dz: Decoding matrix z population
         '''
         self.A = A
         self.B = B
@@ -88,6 +88,8 @@ class SpikeNet:
         self.Y = riccati(self.A.T, self.C, self.SIGM_NOISE_N, self.SIGM_NOISE_D)
         self.K_f = self.Y@self.C.T@self.SIGM_NOISE_D
         #######
+
+        # Maybe allow setting O_A and O_s manually?
 
         self.O_A = self.D.T@(self.A + self.l*np.identity(self.K))@self.D
         self.O_s = -self.D.T@self.D
@@ -170,13 +172,13 @@ class SpikeNet:
             self.model.neuron_populations[pop].spike_recording_enabled = True
 
         self.model.build()
-        
+
         # initialise the extra global parameter
         # "spikeCount", which is needed for the
         # one-spike-at-a-time behaviour.
         self.lif_pop.set_extra_global_param("spikeCount", np.zeros(1).astype("int"))
         self.lif_pop_z.set_extra_global_param("spikeCount", np.zeros(1).astype("int"))
-        
+
         # load the model. num_recording_timesteps
         # determines the spike recording buffer size
         self.model.load(num_recording_timesteps=self.NT)
