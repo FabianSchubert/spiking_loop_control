@@ -40,9 +40,9 @@ t_ax = np.arange(NT) * DT
 
 ######################## Network Parameters
 ###### Population
-N = 100
+N = 1000
 K = 2 # size of the dynamical system (?)
-NZ = 50 # size of lif z population
+NZ = 500 # size of lif z population
 KZ = 2 # dimensions of the external control input z
 P = 1 # dimensions of control variable u
 NY = 2 # dimensions of the observation vector y
