@@ -3,7 +3,7 @@ import numpy as np
 
 class Arm2D:
 
-    def __init__(self, l1, l2, m1, m2, torque_mag, damp, dt):
+    def __init__(self, l1, l2, m1, m2, damp, dt):
 
         self.l1 = l1
         self.l2 = l2
@@ -11,20 +11,22 @@ class Arm2D:
         self.m2 = m2
         self.I1 = self.m1 * self.l1**2. / 3.
         self.I2 = self.m2 * self.l2**2. / 3.
-        self.torque_mag = torque_mag # 2d array with torques applied when active
         self.damp = damp # velocity damping on both rods
         self.dt = dt # time step
 
         self.state = np.zeros((4))
 
         self.atarg = np.zeros((2))
+    @property
+    def targ(self):
+        return np.array([self.atarg[0],self.atarg[1],0.,0.])
 
     def step(self, action):
 
         angles = self.state[:2]
         vels = self.state[2:]
 
-        total_torques = action * self.torque_mag
+        total_torques = action
 
         dadt = vels
 

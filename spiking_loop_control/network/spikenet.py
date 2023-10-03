@@ -83,7 +83,7 @@ class SpikeNet:
 
         ####### Kalman Filter
         self.X = riccati(self.A, self.B, self.Q, self.R)
-        self.K_r = (self.B.T@self.X)/self.R
+        self.K_r = np.linalg.inv(self.R) @ (self.B.T@self.X)
 
         self.Y = riccati(self.A.T, self.C, self.SIGM_NOISE_N, self.SIGM_NOISE_D)
         self.K_f = self.Y@self.C.T@self.SIGM_NOISE_D
@@ -96,10 +96,8 @@ class SpikeNet:
 
         self.O_y = -self.D.T@self.K_f
         self.O_yr = self.D.T@self.K_f@self.C@self.D
-
         self.O_control = -self.D.T@self.B@self.K_r@self.D
         self.O_z = self.D.T@self.B@self.K_r@self.Dz
-
         self.O_r = self.O_A + self.O_yr + self.O_control
 
         self.SIGM_NOISE_LIF = self.SIGM_NOISE_V
