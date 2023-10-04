@@ -5,8 +5,6 @@ import pygame as pg
 
 from .arm2d import Arm2D
 
-from scipy.linalg import solve_continuous_are
-
 from spiking_loop_control.network.spikenet import SpikeNet
 
 import time
