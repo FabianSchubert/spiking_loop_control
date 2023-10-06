@@ -3,7 +3,7 @@
 import numpy as np
 import pygame as pg
 
-from .arm2d import Arm2D
+from phys_models.arm2d import Arm2D
 
 from spiking_loop_control.network.spikenet import SpikeNet
 
@@ -37,15 +37,15 @@ T_BUFFER_SPIKES = DT_NETWORK * N_STEPS_SUPERSAMPLE
 
 ######################## Network Parameters
 ###### Population
-N = 150
+N = 300
 K = 4 # size of the dynamical system (?)
-NZ = 100 # size of lif z population
+NZ = 200 # size of lif z population
 KZ = 4 # dimensions of the external target input z
 P = 2 # dimensions of control variable u
 NY = 4 # dimensions of the observation vector y
 ######
 ####### neuron leakage
-l = 10.
+l = 1.
 #######
 ######################## Control Parameter Definitions
 
@@ -57,12 +57,15 @@ A[2,3] = DAMP2/I1
 A[3,2] = DAMP2/I2
 A[3,3] = -DAMP2/I2
 
-B = np.zeros((4,2))
+B = np.zeros((K,P))
 B[2,0] = 1./I1
 B[2,1] = -1./I1
 B[3,1] = 1./I2
 
 C = np.eye(4) # system readout
+#C = np.zeros((NY,K))
+#C[0,0] = 1.
+#C[1,1] = 1.
 
 D = np.random.randn(K,N) # decoding matrices
 D = D / np.sqrt(np.diag(D.T@D)) # normalize vectors
@@ -73,7 +76,7 @@ Dz = Dz / np.sqrt(np.diag(Dz.T@Dz)) # normalize vectors
 Dz = Dz/50. # reduce size
 
 ####### noise
-SIGM_NOISE_N = 1e-8*np.identity(K)
+SIGM_NOISE_N = 1e-8*np.identity(NY)
 SIGM_NOISE_D = 1e-8*np.identity(K)
 SIGM_NOISE_V = 0e-8 * np.eye(N)
 SIGM_NOISE_V_Z = 0e-8 * np.eye(NZ)
@@ -192,15 +195,17 @@ while running:
     if mousedown:
         mspos = pg.mouse.get_pos()
         arm.update_ik_targ_angles(np.array([(mspos[0]-CTRX)/ZOOM,-(mspos[1]-CTRY)/ZOOM]))
-
     # update arm state using the current action
     # provided by the network
     arm.step(net.u)
 
     # run the supersampled network simulation for this time step.
-    for _t in range(N_STEPS_SUPERSAMPLE):
+    #net.step(t*N_STEPS_SUPERSAMPLE, arm.targ * l + (arm.targ - arm_targ_prev)/DT, arm.state)
+    net.step(t*N_STEPS_SUPERSAMPLE, arm.targ * l, arm.state)
+    for _t in range(1, N_STEPS_SUPERSAMPLE-1):
         #net.step(t*N_STEPS_SUPERSAMPLE+_t, arm.targ * l + (arm.targ - arm_targ_prev)/DT, arm.state)
-        net.step(t*N_STEPS_SUPERSAMPLE+_t, arm.targ * l, arm.state)
+        net.step(t*N_STEPS_SUPERSAMPLE+_t, pull_u=False)
+    net.step((t+1)*N_STEPS_SUPERSAMPLE-1, pull_u=True)
 
     # update caresian coordinates for the joints
     pos_joints = arm.get_joint_pos()

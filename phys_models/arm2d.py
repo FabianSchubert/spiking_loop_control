@@ -86,14 +86,14 @@ class Arm2D:
         # the angles are calculated using np.arctan, which might not give you the
         # angle representation that is closest to the current angles, so we choose
         # the smallest distance among [th + 2PI, th - 2PI, th].
-        th1 = [th1 + np.pi*2., th1 - np.pi*2., th1][np.argmin([np.abs(th1 + np.pi*2. - self.state[0]),
-                                                              np.abs(th1 - np.pi*2. - self.state[0]),
-                                                              np.abs(th1 - self.state[0])])]
+        #th1 = [th1 + np.pi*2., th1 - np.pi*2., th1][np.argmin([np.abs(th1 + np.pi*2. - self.state[0]),
+        #                                                      np.abs(th1 - np.pi*2. - self.state[0]),
+        #                                                      np.abs(th1 - self.state[0])])]
 
         th2 = th1 - 2.*np.arctan(s2/(np.linalg.norm(pos)**2.-(self.l1-self.l2)**2.))
         # see above.
-        th2 = [th2 + np.pi*2., th2 - np.pi*2., th2][np.argmin([np.abs(th2 + np.pi*2. - self.state[1]),
-                                                              np.abs(th2 - np.pi*2. - self.state[1]),
-                                                              np.abs(th2 - self.state[1])])]
+        #th2 = [th2 + np.pi*2., th2 - np.pi*2., th2][np.argmin([np.abs(th2 + np.pi*2. - self.state[1]),
+        #                                                      np.abs(th2 - np.pi*2. - self.state[1]),
+        #                                                      np.abs(th2 - self.state[1])])]
         # update target angles
         self.atarg[:] = np.array([th1, th2])

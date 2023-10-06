@@ -16,6 +16,8 @@ from .neurons import Lif, External, Noise
 from . import synapses
 from .utils import EulerMaruyama, lin_system
 
+from .initialisation import Control_init, Kalman_init, X_init
+
 from scipy.linalg import solve_continuous_are as riccati
 
 import numpy as np
@@ -36,7 +38,8 @@ class SpikeNet:
             N: Dimension of the spiking sontrol network
             K: Dimension of the dynamical system to be controlled.
             NZ: Dimension of the spiking network encoding the target variable (z)
-            KZ: Dimension of the target / obversable.
+            KZ: Dimension of the target.
+            NY: Dimension of the observable
         '''
         self.N = N
         self.K = K
@@ -60,6 +63,7 @@ class SpikeNet:
         self.D = D
         self.Dz = Dz
 
+        self.NY = self.C.shape[0] # dimension of the observable
         self.NU = self.B.shape[1] # dimension of the control variable u.
 
         self.T = np.diag(self.D.T@self.D)/2. # neuron thresholds
@@ -82,32 +86,32 @@ class SpikeNet:
         self.SIGM_NOISE_V_Z = SIGM_NOISE_V_Z
 
         ####### Kalman Filter
-        self.X = riccati(self.A, self.B, self.Q, self.R)
-        self.K_r = np.linalg.inv(self.R) @ (self.B.T@self.X)
+        self.K_c = Control_init(self.A, self.B, self.Q, self.R)
+        #self.X = riccati(self.A, self.B, self.Q, self.R)
+        #self.K_r = np.linalg.inv(self.R) @ (self.B.T@self.X)
 
-        self.Y = riccati(self.A.T, self.C, self.SIGM_NOISE_N, self.SIGM_NOISE_D)
-        self.K_f = self.Y@self.C.T@self.SIGM_NOISE_D
+        #self.Y = riccati(self.A.T, self.C.T, self.SIGM_NOISE_N, self.SIGM_NOISE_D)
+        #self.K_f = self.Y@self.C.T@self.SIGM_NOISE_D
+        self.K_f = Kalman_init(self.A, self.C, self.SIGM_NOISE_N, self.SIGM_NOISE_D)
         #######
 
         # Maybe allow setting O_A and O_s manually?
 
-        self.O_A = self.D.T@(self.A + self.l*np.identity(self.K))@self.D
-        self.O_s = -self.D.T@self.D
+        self.O_s = self.D.T@(self.A + self.l*np.identity(self.K))@self.D
+        self.O_f = -self.D.T@self.D
 
-        self.O_y = -self.D.T@self.K_f
-        self.O_yr = self.D.T@self.K_f@self.C@self.D
-        self.O_control = -self.D.T@self.B@self.K_r@self.D
-        self.O_z = self.D.T@self.B@self.K_r@self.Dz
-        self.O_r = self.O_A + self.O_yr + self.O_control
-
-        self.SIGM_NOISE_LIF = self.SIGM_NOISE_V
-        # self.SIGM_NOISE_LIF = self.SIGM_NOISE_V + self.O_y @ self.SIGM_NOISE_N @ self.O_y.T
+        self.F_k = self.D.T@self.K_f
+        self.O_k = -self.D.T@self.K_f@self.C@self.D
+        self.O_c = -self.D.T@self.B@self.K_c@self.D
+        self.O_z = self.D.T@self.B@self.K_c@self.Dz
+        self.O_r = self.O_s + self.O_k + self.O_c
+        self.O_f_z = -self.Dz.T@self.Dz
 
         # Calculate the projection matrix P_NOISE
         # that generates this covariance
         # from uncorrelated N-dimensional
         # zero-mean noise.
-        u_svd,s_svd,_ = np.linalg.svd(self.SIGM_NOISE_LIF)
+        u_svd,s_svd,_ = np.linalg.svd(self.SIGM_NOISE_V)
         self.P_NOISE = u_svd @ np.diag(np.sqrt(s_svd))
 
         u_svd,s_svd,_ = np.linalg.svd(self.SIGM_NOISE_V_Z)
@@ -124,7 +128,7 @@ class SpikeNet:
 
         if not self.sensor_mode:
             self.f = lambda tf, xf: lin_system(xf, u_eff=self.u_eff, A=self.A)
-           # note: a reference to the variable u_eff is passed here, not the values.
+            # note: the variable u_eff is passed "by reference" here.
             # This means that changing u_eff later will also affect the result of calling
             # f accordingly. Same with A, even though this is not changed anywhere.
 
@@ -240,7 +244,7 @@ class SpikeNet:
         ######################## add y state population
         self.y_pop = self.model.add_neuron_population(
             "y_pop",
-            self.KZ, External.model,
+            self.NY, External.model,
             {"l": 0.0}, {"x": 0.0, "u_eff": 0.0}
         )
         ########################
@@ -306,7 +310,7 @@ class SpikeNet:
                 pop_name="syn_lif_to_lif_fast",
                 source="lif_pop",
                 target="lif_pop",
-                wu_var_space={"g": self.O_s.T.flatten()},
+                wu_var_space={"g": self.O_f.T.flatten()},
                 **synapses.fast_syn
             )
 
@@ -358,7 +362,7 @@ class SpikeNet:
             pop_name="syn_y_to_lif",
             source="y_pop",
             target="lif_pop",
-            wu_var_space={"g": self.O_y.T.flatten()},
+            wu_var_space={"g": self.F_k.T.flatten()},
             **synapses.continuous_external_syn
         )
 
@@ -371,7 +375,7 @@ class SpikeNet:
             pop_name="syn_noise_to_lif",
             source="noise_pop",
             target="lif_pop",
-            wu_var_space={"g": self.P_NOISE.flatten()},
+            wu_var_space={"g": self.P_NOISE.T.flatten()},
             **synapses.noise_syn
             )
 
@@ -389,12 +393,12 @@ class SpikeNet:
             )
         self.W_vz_zeff.ps_target_var = "Isyn_ds"
 
-
+        # fast synapses lif z to lif z
         self.W_vz_vz_s = self.model.add_synapse_population(
             pop_name="syn_lif_z_to_lif_z",
             source="lif_pop_z",
             target="lif_pop_z",
-            wu_var_space={"g": (-self.Dz.T@self.Dz).T.flatten()},
+            wu_var_space={"g": self.O_f_z.T.flatten()},
             **synapses.fast_syn
             )
 
@@ -406,7 +410,7 @@ class SpikeNet:
             pop_name="syn_noise_to_lif_z",
             source="noise_pop_z",
             target="lif_pop_z",
-            wu_var_space={"g": self.P_NOISE_Z.flatten()},
+            wu_var_space={"g": self.P_NOISE_Z.T.flatten()},
             **synapses.noise_syn
             )
 
@@ -420,10 +424,10 @@ class SpikeNet:
                 pop_name="syn_lif_to_u",
                 source="lif_pop",
                 target="u_pop",
-                wu_var_space={"g": (-self.K_r@self.D).T.flatten()},
+                wu_var_space={"g": (-self.K_c@self.D).T.flatten()},
                 **synapses.slow_syn,
                 ps_param_space={"l": self.l},
-                ps_var_space={"inSynCustom": -self.K_r@self.D@self.r0}
+                ps_var_space={"inSynCustom": -self.K_c@self.D@self.r0}
             )
         self.W_u_v_r.ps_target_var = "Isyn"
 
@@ -432,34 +436,36 @@ class SpikeNet:
                 pop_name="syn_lif_z_to_u",
                 source="lif_pop_z",
                 target="u_pop",
-                wu_var_space={"g": (self.K_r@self.Dz).T.flatten()},
+                wu_var_space={"g": (self.K_c@self.Dz).T.flatten()},
                 **synapses.slow_syn,
                 ps_param_space={"l": self.l},
-                ps_var_space={"inSynCustom": self.K_r@self.Dz@self.rz0}
+                ps_var_space={"inSynCustom": self.K_c@self.Dz@self.rz0}
             )
 
         self.W_u_vz_r.ps_target_var = "Isyn"
         ##########
 
-    def step(self, tid, z, y=None):
+    def step(self, tid, z=None, y=None, pull_u=True):
 
         #################### update ds_vars
-        self.u_pop.pull_var_from_device("u_eff")
-        self.u[:] = self.u_view
+        if pull_u:
+            self.u_pop.pull_var_from_device("u_eff")
+            self.u[:] = self.u_view
 
         if not self.sensor_mode:
             self.u_eff = self.B @ self.u
             self.x[:] = self.ds_integrator.step(tid * self.DT, self.x)
             self.y_view[:] = self.C @ self.x + self.P_NOISE_Y @ np.random.normal(0., 1., (self.KZ))
-        else:
+            self.y_pop.push_var_to_device("x")
+        elif y is not None:
             self.y_view[:] = y
-
-        self.y_pop.push_var_to_device("x")
+            self.y_pop.push_var_to_device("x")
         ####################
 
         #################### update z var
-        self.z_eff_view[:] = z
-        self.z_eff_pop.push_var_to_device("x")
+        if z is not None:
+            self.z_eff_view[:] = z
+            self.z_eff_pop.push_var_to_device("x")
         ####################
 
         # update model on device
