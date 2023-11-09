@@ -21,12 +21,12 @@ I2 = L2**2.*M2/3.
 DAMP1 = .25
 DAMP2 = .25
 
-DT = 0.01
+DT = 0.025
 #####
 
 ##### Network Settings
 # supersampling time step for simulating the network.
-DT_NETWORK = 0.00005
+DT_NETWORK = 0.0001
 
 N_STEPS_SUPERSAMPLE = int(DT/DT_NETWORK)
 
@@ -37,9 +37,9 @@ T_BUFFER_SPIKES = DT_NETWORK * N_STEPS_SUPERSAMPLE
 
 ######################## Network Parameters
 ###### Population
-N = 300
+N = 150
 K = 4 # size of the dynamical system (?)
-NZ = 200 # size of lif z population
+NZ = 100 # size of lif z population
 KZ = 4 # dimensions of the external target input z
 P = 2 # dimensions of control variable u
 NY = 4 # dimensions of the observation vector y
@@ -148,31 +148,37 @@ def update_spike_filters():
 # draw the arm and the neuronal activity.
 def draw_scene():
     # fill the screen with a color to wipe away anything from last frame
-    screen.fill("black")
+    screen.fill("white")
 
     for k in range(N):
         _x = k%int(np.sqrt(N))
         _y = k//int(np.sqrt(N))
-        pg.draw.circle(screen, (0, r_filt_lif[k], r_filt_lif[k]),
-                (_x*10+5.,_y*10+5.),5.)
+        col_interp = 1. - np.exp(-0.01*r_filt_lif[k])
+        col = (255*(1.-col_interp), 255*(1.-col_interp) + 100*col_interp, 255)
+        pg.draw.circle(screen, col,
+                (_x*10+15.,_y*10+15.),5.)
     for k in range(NZ):
         _x = k%int(np.sqrt(NZ)) + np.sqrt(N)
         _y = k//int(np.sqrt(NZ))
-        pg.draw.circle(screen, (r_filt_z[k], 0.5 * r_filt_z[k], 0),
-                (_x*10+5.+20.,_y*10+5.),5.)
+        col_interp = 1. - np.exp(-0.01*r_filt_z[k])
+        col = (255*(1.-col_interp)+255*col_interp, 255*(1.-col_interp) + 100*col_interp, 255*(1.-col_interp))
+        pg.draw.circle(screen, col,
+                (_x*10+15.+20.,_y*10+15.),5.)
 
-    pg.draw.line(screen, "white",
+    pg.draw.line(screen, "black",
             (CTRX, CTRY),
             (CTRX + ZOOM*pos_joints[0], CTRY - ZOOM*pos_joints[1]),
-            width=2)
-    pg.draw.line(screen, "white",
+            width=10)
+    pg.draw.line(screen, "black",
             (CTRX + ZOOM*pos_joints[0], CTRY - ZOOM*pos_joints[1]),
             (CTRX + ZOOM*pos_joints[2], CTRY - ZOOM*pos_joints[3]),
-            width=2)
-    pg.draw.circle(screen, "white",
+            width=10)
+    pg.draw.circle(screen, "black",
+            (CTRX, CTRY), 10)
+    pg.draw.circle(screen, "black",
             (CTRX + ZOOM*pos_joints[0], CTRY - ZOOM*pos_joints[1]),
             10)
-    pg.draw.circle(screen, "white",
+    pg.draw.circle(screen, "black",
             (CTRX + ZOOM*pos_joints[2], CTRY - ZOOM*pos_joints[3]),
             10)
 
@@ -222,7 +228,7 @@ while running:
 
     # you can limit the simulation speed if it runs faster
     # than realtime.
-    #clock.tick(1./DT)  # limits FPS to 1/DT
+    clock.tick(1./DT)  # limits FPS to 1/DT
 
     print(f'Real Time / Sim. Time Ratio: {(time.time()-t0)/(t*DT)}', end="\r")
 
