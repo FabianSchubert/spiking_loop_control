@@ -21,7 +21,7 @@ I2 = L2**2.*M2/3.
 DAMP1 = .25
 DAMP2 = .25
 
-DT = 0.025
+DT = 0.005
 #####
 
 ##### Network Settings
@@ -85,7 +85,7 @@ SIGM_NOISE_V_Z = 0e-8 * np.eye(NZ)
 ####### Kalman filter parameters
 Q = np.eye(K)
 Q[range(2),range(2)] = 10.
-R = 1e-1 * np.eye(P)
+R = 2e-2 * np.eye(P)
 #######
 ########################
 
@@ -182,6 +182,9 @@ def draw_scene():
             (CTRX + ZOOM*pos_joints[2], CTRY - ZOOM*pos_joints[3]),
             10)
 
+    mspos = pg.mouse.get_pos()
+    pg.draw.circle(screen, "green",
+        (mspos[0], mspos[1]), 10)
 
 while running:
     # poll for events
@@ -228,6 +231,9 @@ while running:
 
     # you can limit the simulation speed if it runs faster
     # than realtime.
+
+    pg.image.save(screen, f"./record_frames/frame_{t}.jpg")
+
     clock.tick(1./DT)  # limits FPS to 1/DT
 
     print(f'Real Time / Sim. Time Ratio: {(time.time()-t0)/(t*DT)}', end="\r")
