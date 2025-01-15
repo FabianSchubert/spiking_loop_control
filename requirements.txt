@@ -1,0 +1,8 @@
+control==0.10.1
+ipdb==0.13.13
+matplotlib==3.8.0
+numpy==2.2.1
+pygame==2.6.1
+pygenn.egg==info
+scipy==1.15.1
+tqdm==4.67.1
